@@ -9,7 +9,7 @@ import json
 import time
 import os
 
-# ── CONFIG ───────────────────────────────────────────────────────────────────
+# ── CONFIG ─────────────────────────────────────────────────────────────
 # Read from GitHub Secrets (passed via environment variables)
 # For local testing, you can set these before running:
 # export NOTION_TOKEN="your-token"
@@ -23,7 +23,7 @@ if not NOTION_TOKEN or not DATABASE_ID:
         "⚠️ ERROR: NOTION_TOKEN and DATABASE_ID environment variables are required!\n"
         "Set them in GitHub Secrets or as environment variables for local testing."
     )
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -298,7 +298,7 @@ function computePLCurve(trades){
   return trades.filter(t=>t.pl!==null).map(t=>{cum+=t.pl;return{date:t.entry,val:+cum.toFixed(2)};});
 }
 
-const baseOpts={responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:fc,font:{size:11}}},datalabels:{display:false}},scales:{x:{ticks:{color:fc,font:{size:10},maxRotation:45},grid:{color:gc}},y:{ticks:{color:fc,font:{size:11}},grid:{color:gc}}}};
+const baseOpts={responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:fc,font:{size:11}}},datalabels:{display:false}},scales:{x:{ticks:{color:fc,font:{size:10},maxRotation:45},grid:{color:gc}},y:{ticks:{color:fc,font:{size:10}},grid:{color:gc}}}};
 
 function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 
@@ -307,9 +307,9 @@ function renderCharts(trades,plCurve){
   const losses=trades.filter(t=>t.status==='Loss').length;
   const bes=trades.filter(t=>t.status==='at cost').length;
   destroyChart('cPie');
-  charts['cPie']=new Chart(document.getElementById('cPie'),{type:'doughnut',data:{labels:['Win','Loss','Breakeven'],datasets:[{data:[wins,losses,bes],backgroundColor:[G,R,Y],borderWidth:2,borderColor:'#1e293b',hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:fc,padding:14,font:{size:12}}},datalabels:{display:true,color:'#fff',font:{weight:'bold',size:13},formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return t>0?Math.round(v/t*100)+'%':''}}}});
+  charts['cPie']=new Chart(document.getElementById('cPie'),{type:'doughnut',data:{labels:['Win','Loss','Breakeven'],datasets:[{data:[wins,losses,bes],backgroundColor:[G,R,Y],borderWidth:2,borderColor:'#0f172a'}]},options:{...baseOpts,plugins:{...baseOpts.plugins,datalabels:{display:true,color:'#fff',font:{weight:'bold'}}}}});
   destroyChart('cPL');
-  charts['cPL']=new Chart(document.getElementById('cPL'),{type:'line',data:{labels:plCurve.map(p=>p.date),datasets:[{label:'Cumulative P/L %',data:plCurve.map(p=>p.val),borderColor:B,backgroundColor:'rgba(56,189,248,.08)',fill:true,tension:.25,pointRadius:3,pointBackgroundColor:plCurve.map((p,i)=>i===0?B:plCurve[i].val>=plCurve[i-1].val?G:R)}]},options:{...baseOpts}});
+  charts['cPL']=new Chart(document.getElementById('cPL'),{type:'line',data:{labels:plCurve.map(p=>p.date),datasets:[{label:'Cumulative P/L %',data:plCurve.map(p=>p.val),borderColor:B,backgroundColor:'rgba(56,189,248,.1)',fill:true,tension:.3,borderWidth:2}]},options:baseOpts});
   renderTradesChart(getSlice('cTrades'));
   renderWRChart(getSlice('cWR'));
   renderStackChart(getSlice('cStack'));
@@ -319,14 +319,14 @@ function renderTradesChart(weekly){
   const WL=weekly.map(w=>w.label);
   const WT=weekly.map(w=>w.total);
   destroyChart('cTrades');
-  charts['cTrades']=new Chart(document.getElementById('cTrades'),{type:'bar',data:{labels:WL,datasets:[{label:'Trades',data:WT,backgroundColor:WL.map((_,i)=>`rgba(99,102,241,${.45+.45*(i/Math.max(WL.length-1,1))})`),borderRadius:5,borderSkipped:false}]},options:{...baseOpts,plugins:{...baseOpts.plugins,datalabels:{display:true,color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'end'}}}});
+  charts['cTrades']=new Chart(document.getElementById('cTrades'),{type:'bar',data:{labels:WL,datasets:[{label:'Trades',data:WT,backgroundColor:WL.map((_,i)=>`rgba(99,102,241,${.45+.45*(i/Math.max(1,WL.length-1))})`)}]},options:{...baseOpts,indexAxis:'y'===undefined?'x':'y'}});
 }
 
 function renderWRChart(weekly){
   const WL=weekly.map(w=>w.label);
   const WWR=weekly.map(w=>w.wr);
   destroyChart('cWR');
-  charts['cWR']=new Chart(document.getElementById('cWR'),{type:'line',data:{labels:WL,datasets:[{label:'Win Rate % (completed trades)',data:WWR,borderColor:G,backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:G,spanGaps:false},{label:'50% target',data:WL.map(()=>50),borderColor:'rgba(255,255,255,.15)',borderDash:[6,4],pointRadius:0}]},options:{...baseOpts,scales:{...baseOpts.scales,y:{...baseOpts.scales.y,min:0,max:100,ticks:{color:fc,callback:v=>v+'%'}}}}});
+  charts['cWR']=new Chart(document.getElementById('cWR'),{type:'line',data:{labels:WL,datasets:[{label:'Win Rate % (completed trades)',data:WWR,borderColor:G,backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,borderWidth:2}]},options:baseOpts});
 }
 
 function renderStackChart(weekly){
@@ -336,7 +336,7 @@ function renderStackChart(weekly){
   const WB=weekly.map(w=>w.be);
   const WIP=weekly.map(w=>w.inProgress);
   destroyChart('cStack');
-  charts['cStack']=new Chart(document.getElementById('cStack'),{type:'bar',data:{labels:WL,datasets:[{label:'Win',data:WW,backgroundColor:'rgba(34,197,94,.8)',borderRadius:3},{label:'Loss',data:WLo,backgroundColor:'rgba(239,68,68,.8)',borderRadius:3},{label:'BE',data:WB,backgroundColor:'rgba(245,158,11,.8)',borderRadius:3},{label:'In Progress',data:WIP,backgroundColor:'rgba(56,189,248,.7)',borderRadius:3}]},options:{...baseOpts,scales:{x:{...baseOpts.scales.x,stacked:true},y:{...baseOpts.scales.y,stacked:true}}}});
+  charts['cStack']=new Chart(document.getElementById('cStack'),{type:'bar',data:{labels:WL,datasets:[{label:'Win',data:WW,backgroundColor:'rgba(34,197,94,.8)',borderRadius:3},{label:'Loss',data:WLo,backgroundColor:'rgba(239,68,68,.8)',borderRadius:3},{label:'BE',data:WB,backgroundColor:'rgba(245,158,11,.8)',borderRadius:3},{label:'In Progress',data:WIP,backgroundColor:'rgba(56,189,248,.8)',borderRadius:3}]},options:{...baseOpts,scales:{...baseOpts.scales,x:{...baseOpts.scales.x,stacked:true},y:{...baseOpts.scales.y,stacked:true}}}});
 }
 
 function renderKPIs(trades){
@@ -365,7 +365,7 @@ function renderStreak(streak){
   const cur=streak.current;
   const curText=cur.type!=='none'?`${cur.count} ${cur.type.toUpperCase()} streak`:'—';
   const curColor=cur.type==='win'?G:cur.type==='loss'?R:fc;
-  document.getElementById('streakBar').innerHTML=`<div class="streak-item"><div class="streak-icon">🔥</div><div class="streak-info"><div class="sv" style="color:${G}">${streak.maxW}</div><div class="sl">Max Win Streak</div></div></div><div class="streak-item"><div class="streak-icon">❄️</div><div class="streak-info"><div class="sv" style="color:${R}">${streak.maxL}</div><div class="sl">Max Loss Streak</div></div></div><div class="streak-item"><div class="streak-icon">${cur.type==='win'?'🔥':cur.type==='loss'?'❄️':'➖'}</div><div class="streak-info"><div class="sv" style="color:${curColor}">${curText}</div><div class="sl">Current Streak</div></div></div>`;
+  document.getElementById('streakBar').innerHTML=`<div class="streak-item"><div class="streak-icon">🔥</div><div class="streak-info"><div class="sv" style="color:${G}">${streak.maxW}</div><div class="sl">Max Wins</div></div></div><div class="streak-item"><div class="streak-icon">📉</div><div class="streak-info"><div class="sv" style="color:${R}">${streak.maxL}</div><div class="sl">Max Losses</div></div></div><div class="streak-item"><div class="streak-icon">⚡</div><div class="streak-info"><div class="sv" style="color:${curColor}">${curText}</div><div class="sl">Current</div></div></div>`;
 }
 
 function renderTable(){
@@ -373,11 +373,11 @@ function renderTable(){
   const showZero=document.getElementById('showZeroToggle')?.checked;
   const rows=weekly.slice().reverse().filter(w=>showZero||w.total>0);
   document.getElementById('weekTable').innerHTML=rows.map(w=>{
-    if(w.total===0) return `<tr style="opacity:.45"><td>${w.label}</td><td><span class="badge" style="background:rgba(148,163,184,.15);color:var(--muted)">0</span></td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">No trades</td></tr>`;
+    if(w.total===0) return `<tr style="opacity:.45"><td>${w.label}</td><td><span class="badge" style="background:rgba(148,163,184,.15);color:var(--muted)">0</span></td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td></tr>`;
     const wrDisplay = w.wr !== null ? w.wr+'%' : '<span style="color:var(--muted)">—</span>';
     const wrc = w.wr !== null ? (w.wr>=50?G:R) : fc;
     const ipStyle = w.inProgress>0 ? `color:${B};font-weight:700` : `color:var(--muted)`;
-    return `<tr><td>${w.label}</td><td><span class="badge">${w.total}</span></td><td style="color:${G}">${w.win}</td><td style="color:${R}">${w.loss}</td><td style="color:${Y}">${w.be}</td><td style="${ipStyle}">${w.inProgress>0?'🔄 '+w.inProgress:'—'}</td><td style="color:${wrc};font-weight:700">${wrDisplay}</td></tr>`;
+    return `<tr><td>${w.label}</td><td><span class="badge">${w.total}</span></td><td style="color:${G}">${w.win}</td><td style="color:${R}">${w.loss}</td><td style="color:${Y}">${w.be}</td><td style="${ipStyle}">${w.inProgress}</td><td style="color:${wrc}">${wrDisplay}</td></tr>`;
   }).join('');
 }
 
