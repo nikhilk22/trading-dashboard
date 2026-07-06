@@ -1,0 +1,487 @@
+"""
+Trading Dashboard - GitHub Static Generator
+Generates a static HTML file that GitHub Pages will serve
+Uses GitHub Secrets for secure credential management
+"""
+
+import urllib.request
+import json
+import time
+import os
+
+# ── CONFIG ───────────────────────────────────────────────────────────────────
+# Read from GitHub Secrets (passed via environment variables)
+# For local testing, you can set these before running:
+# export NOTION_TOKEN="your-token"
+# export DATABASE_ID="your-id"
+NOTION_TOKEN = os.getenv('NOTION_TOKEN')
+DATABASE_ID  = os.getenv('DATABASE_ID')
+
+# Validate that secrets are set
+if not NOTION_TOKEN or not DATABASE_ID:
+    raise ValueError(
+        "⚠️ ERROR: NOTION_TOKEN and DATABASE_ID environment variables are required!\n"
+        "Set them in GitHub Secrets or as environment variables for local testing."
+    )
+# ─────────────────────────────────────────────────────────────────────────────
+
+HTML_TEMPLATE = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#6366f1;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#38bdf8}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.header{background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.header h1{font-size:1.7rem;font-weight:800;background:linear-gradient(90deg,#6366f1,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-right{display:flex;align-items:center;gap:16px}
+.meta{font-size:0.78rem;color:var(--muted);text-align:right}
+.tab-bar{background:#1e293b;border-bottom:1px solid var(--border);display:flex;padding:0 24px}
+.tab-btn{padding:14px 22px;font-size:.88rem;font-weight:600;color:var(--muted);border:none;background:transparent;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;letter-spacing:.03em}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:#a5b4fc;border-bottom-color:var(--accent)}
+.page{display:none}
+.page.active{display:block}
+.container{max-width:1400px;margin:0 auto;padding:24px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px;margin-bottom:24px}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 14px;text-align:center;transition:transform .2s}
+.kpi-card:hover{transform:translateY(-2px)}
+.kpi-card .val{font-size:1.9rem;font-weight:800;line-height:1}
+.kpi-card .lbl{font-size:.7rem;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
+.kpi-card .sub{font-size:.72rem;color:var(--muted);margin-top:3px}
+.kpi-g{border-top:3px solid var(--green)}.kpi-r{border-top:3px solid var(--red)}.kpi-b{border-top:3px solid var(--blue)}.kpi-y{border-top:3px solid var(--yellow)}.kpi-p{border-top:3px solid var(--accent)}
+.streak-bar{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.streak-item{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.streak-icon{font-size:1.8rem}
+.streak-info .sv{font-size:1.3rem;font-weight:700}
+.streak-info .sl{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.section-title{font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-left:10px;border-left:3px solid var(--accent)}
+.charts-row{display:grid;gap:18px;margin-bottom:20px}
+.r2{grid-template-columns:1fr 1fr}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+.chart-card h3{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+canvas{max-height:280px}
+.canvas-tall{max-height:320px!important}
+.table-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:22px;overflow-x:auto}
+.table-card h3{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{color:var(--muted);font-weight:600;text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);font-size:.72rem;text-transform:uppercase}
+td{padding:9px 12px;border-bottom:1px solid rgba(51,65,85,.4)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,.05)}
+.badge{background:rgba(99,102,241,.2);color:var(--accent);border-radius:6px;padding:2px 8px;font-weight:700;font-size:.78rem}
+.footer{text-align:center;padding:18px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--border);margin-top:6px}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.chart-header h3{margin-bottom:0}
+.cfbtn-group{display:flex;gap:4px}
+.cfbtn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:3px 9px;border-radius:6px;font-size:.7rem;font-weight:600;cursor:pointer;transition:all .18s;white-space:nowrap}
+.cfbtn:hover{border-color:var(--accent);color:var(--text)}
+.cfbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.table-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.table-top h3{margin-bottom:0}
+.table-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.toggle-label{font-size:.75rem;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px}
+.toggle-switch{position:relative;width:34px;height:18px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:#334155;border-radius:18px;cursor:pointer;transition:.3s}
+.toggle-slider:before{content:'';position:absolute;width:12px;height:12px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.3s}
+input:checked+.toggle-slider{background:var(--accent)}
+input:checked+.toggle-slider:before{transform:translateX(16px)}
+@media(max-width:900px){.r2{grid-template-columns:1fr}.tab-btn{padding:12px 14px;font-size:.8rem}.cfbtn-group{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📊 Trading Dashboard</h1>
+    <div style="color:var(--muted);font-size:.78rem;margin-top:3px" id="dateRange">Loading…</div>
+  </div>
+  <div class="header-right">
+    <div class="meta" id="metaInfo"></div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('overview',this)">📈 Overview</button>
+  <button class="tab-btn" onclick="switchTab('weekly',this)">📅 Weekly</button>
+</div>
+
+<div class="page active" id="page-overview">
+  <div class="container">
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="streak-bar" id="streakBar"></div>
+    <div class="charts-row r2">
+      <div class="chart-card"><h3>🍩 Overall Outcome Split</h3><div style="height:280px;display:flex;align-items:center;justify-content:center"><canvas id="cPie"></canvas></div></div>
+      <div class="chart-card"><h3>📈 Cumulative P/L % Curve</h3><canvas id="cPL"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div class="page" id="page-weekly">
+  <div class="container">
+    <p class="section-title">Weekly Breakdown</p>
+
+    <div class="charts-row r2">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>📦 Trades Taken Per Week</h3>
+          <div class="cfbtn-group" id="f-cTrades">
+            <button class="cfbtn active" onclick="setChartFilter('cTrades',null,this)">All</button>
+            <button class="cfbtn" onclick="setChartFilter('cTrades',4,this)">4W</button>
+            <button class="cfbtn" onclick="setChartFilter('cTrades',8,this)">8W</button>
+            <button class="cfbtn" onclick="setChartFilter('cTrades',12,this)">12W</button>
+          </div>
+        </div>
+        <canvas id="cTrades" class="canvas-tall"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>🎯 Win Rate % Per Week</h3>
+          <div class="cfbtn-group" id="f-cWR">
+            <button class="cfbtn active" onclick="setChartFilter('cWR',null,this)">All</button>
+            <button class="cfbtn" onclick="setChartFilter('cWR',4,this)">4W</button>
+            <button class="cfbtn" onclick="setChartFilter('cWR',8,this)">8W</button>
+            <button class="cfbtn" onclick="setChartFilter('cWR',12,this)">12W</button>
+          </div>
+        </div>
+        <canvas id="cWR" class="canvas-tall"></canvas>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>📊 Win / Loss / BE Stacked Per Week</h3>
+          <div class="cfbtn-group" id="f-cStack">
+            <button class="cfbtn active" onclick="setChartFilter('cStack',null,this)">All</button>
+            <button class="cfbtn" onclick="setChartFilter('cStack',4,this)">4W</button>
+            <button class="cfbtn" onclick="setChartFilter('cStack',8,this)">8W</button>
+            <button class="cfbtn" onclick="setChartFilter('cStack',12,this)">12W</button>
+          </div>
+        </div>
+        <canvas id="cStack" class="canvas-tall"></canvas>
+      </div>
+    </div>
+
+    <p class="section-title">Weekly Summary Table</p>
+    <div class="table-card">
+      <div class="table-top">
+        <h3>All Weeks — Latest First</h3>
+        <div class="table-controls">
+          <div class="cfbtn-group" id="f-table">
+            <button class="cfbtn active" onclick="setChartFilter('table',null,this)">All</button>
+            <button class="cfbtn" onclick="setChartFilter('table',4,this)">4W</button>
+            <button class="cfbtn" onclick="setChartFilter('table',8,this)">8W</button>
+            <button class="cfbtn" onclick="setChartFilter('table',12,this)">12W</button>
+          </div>
+          <label class="toggle-label">
+            <span class="toggle-switch">
+              <input type="checkbox" id="showZeroToggle" onchange="renderTable()">
+              <span class="toggle-slider"></span>
+            </span>
+            Show 0-trade weeks
+          </label>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Week</th><th>Total</th><th>Wins</th><th>Losses</th><th>BE</th><th>🔄 In Progress</th><th>Win Rate*</th></tr></thead>
+        <tbody id="weekTable"></tbody>
+      </table>
+      <p style="font-size:.7rem;color:var(--muted);margin-top:10px;padding-left:4px">* Win Rate calculated from completed trades only (excludes In Progress)</p>
+    </div>
+  </div>
+</div>
+
+<div class="footer" id="footerText"></div>
+
+<script>
+Chart.register(ChartDataLabels);
+const G='#22c55e',R='#ef4444',Y='#f59e0b',B='#38bdf8',P='#6366f1';
+const gc='rgba(51,65,85,.6)',fc='#94a3b8';
+const charts={};
+let allWeekly=[];
+let tradesData = {};
+
+const chartFilters={cTrades:null, cWR:null, cStack:null, table:null};
+
+function getSlice(id){ return chartFilters[id]===null ? allWeekly : allWeekly.slice(-chartFilters[id]); }
+
+function setChartFilter(id, n, btn){
+  chartFilters[id]=n;
+  document.querySelectorAll('#f-'+id+' .cfbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(id==='cTrades')     renderTradesChart(getSlice('cTrades'));
+  else if(id==='cWR')    renderWRChart(getSlice('cWR'));
+  else if(id==='cStack') renderStackChart(getSlice('cStack'));
+  else if(id==='table')  renderTable();
+}
+
+function parseISTDate(dateStr){
+  if(typeof dateStr === 'string' && dateStr.includes('-')){
+    const parts = dateStr.split('T')[0].split('-');
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+  }
+  return new Date(dateStr);
+}
+
+function getWeekKey(ds){
+  const d = parseISTDate(ds);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const da = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${da}`;
+}
+
+function weekLabel(wk){
+  const d = parseISTDate(wk);
+  const e = new Date(d);
+  e.setDate(e.getDate() + 6);
+  const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${d.getDate()} ${mo[d.getMonth()]} - ${e.getDate()} ${mo[e.getMonth()]} ${e.getFullYear()}`;
+}
+
+function computeWeekly(trades){
+  const map={};
+  for(const t of trades){
+    const wk=getWeekKey(t.entry);
+    if(!map[wk]) map[wk]={wk,total:0,win:0,loss:0,be:0,inProgress:0};
+    map[wk].total++;
+    if(t.status==='In Progress') map[wk].inProgress++;
+    else if(t.status==='Profit') map[wk].win++;
+    else if(t.status==='Loss') map[wk].loss++;
+    else map[wk].be++;
+  }
+  const keys=Object.keys(map).sort();
+  const todayKey=getWeekKey(new Date().toLocaleDateString('en-CA'));
+  if(keys.length>0){
+    let cur=new Date(keys[0]+'T00:00:00');
+    const last=new Date(todayKey+'T00:00:00');
+    while(cur<=last){
+      const y=cur.getFullYear();
+      const m=String(cur.getMonth()+1).padStart(2,'0');
+      const d=String(cur.getDate()).padStart(2,'0');
+      const k=`${y}-${m}-${d}`;
+      if(!map[k]) map[k]={wk:k,total:0,win:0,loss:0,be:0,inProgress:0};
+      cur.setDate(cur.getDate()+7);
+    }
+  }
+  return Object.values(map).sort((a,b)=>a.wk.localeCompare(b.wk)).map(w=>({...w,label:weekLabel(w.wk),wr:(w.win+w.loss)>0?+(w.win/(w.win+w.loss)*100).toFixed(1):null}));
+}
+
+function computeStreak(trades){
+  let streaks=[],cur=0,typ=null;
+  for(const t of trades){
+    if(t.status==='at cost'){if(cur){streaks.push({type:typ,count:cur});cur=0;typ=null;}continue;}
+    const tt=t.status==='Profit'?'win':'loss';
+    if(tt===typ) cur++;
+    else{if(cur) streaks.push({type:typ,count:cur});typ=tt;cur=1;}
+  }
+  if(cur) streaks.push({type:typ,count:cur});
+  const maxW=Math.max(0,...streaks.filter(s=>s.type==='win').map(s=>s.count));
+  const maxL=Math.max(0,...streaks.filter(s=>s.type==='loss').map(s=>s.count));
+  const current=streaks[streaks.length-1]||{type:'none',count:0};
+  return{maxW,maxL,current};
+}
+
+function computePLCurve(trades){
+  let cum=0;
+  return trades.filter(t=>t.pl!==null).map(t=>{cum+=t.pl;return{date:t.entry,val:+cum.toFixed(2)};});
+}
+
+const baseOpts={responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:fc,font:{size:11}}},datalabels:{display:false}},scales:{x:{ticks:{color:fc,font:{size:10},maxRotation:45},grid:{color:gc}},y:{ticks:{color:fc,font:{size:11}},grid:{color:gc}}}};
+
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+function renderCharts(trades,plCurve){
+  const wins=trades.filter(t=>t.status==='Profit').length;
+  const losses=trades.filter(t=>t.status==='Loss').length;
+  const bes=trades.filter(t=>t.status==='at cost').length;
+  destroyChart('cPie');
+  charts['cPie']=new Chart(document.getElementById('cPie'),{type:'doughnut',data:{labels:['Win','Loss','Breakeven'],datasets:[{data:[wins,losses,bes],backgroundColor:[G,R,Y],borderWidth:2,borderColor:'#1e293b',hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:fc,padding:14,font:{size:12}}},datalabels:{display:true,color:'#fff',font:{weight:'bold',size:13},formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return t>0?Math.round(v/t*100)+'%':''}}}});
+  destroyChart('cPL');
+  charts['cPL']=new Chart(document.getElementById('cPL'),{type:'line',data:{labels:plCurve.map(p=>p.date),datasets:[{label:'Cumulative P/L %',data:plCurve.map(p=>p.val),borderColor:B,backgroundColor:'rgba(56,189,248,.08)',fill:true,tension:.25,pointRadius:3,pointBackgroundColor:plCurve.map((p,i)=>i===0?B:plCurve[i].val>=plCurve[i-1].val?G:R)}]},options:{...baseOpts}});
+  renderTradesChart(getSlice('cTrades'));
+  renderWRChart(getSlice('cWR'));
+  renderStackChart(getSlice('cStack'));
+}
+
+function renderTradesChart(weekly){
+  const WL=weekly.map(w=>w.label);
+  const WT=weekly.map(w=>w.total);
+  destroyChart('cTrades');
+  charts['cTrades']=new Chart(document.getElementById('cTrades'),{type:'bar',data:{labels:WL,datasets:[{label:'Trades',data:WT,backgroundColor:WL.map((_,i)=>`rgba(99,102,241,${.45+.45*(i/Math.max(WL.length-1,1))})`),borderRadius:5,borderSkipped:false}]},options:{...baseOpts,plugins:{...baseOpts.plugins,datalabels:{display:true,color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'end'}}}});
+}
+
+function renderWRChart(weekly){
+  const WL=weekly.map(w=>w.label);
+  const WWR=weekly.map(w=>w.wr);
+  destroyChart('cWR');
+  charts['cWR']=new Chart(document.getElementById('cWR'),{type:'line',data:{labels:WL,datasets:[{label:'Win Rate % (completed trades)',data:WWR,borderColor:G,backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:G,spanGaps:false},{label:'50% target',data:WL.map(()=>50),borderColor:'rgba(255,255,255,.15)',borderDash:[6,4],pointRadius:0}]},options:{...baseOpts,scales:{...baseOpts.scales,y:{...baseOpts.scales.y,min:0,max:100,ticks:{color:fc,callback:v=>v+'%'}}}}});
+}
+
+function renderStackChart(weekly){
+  const WL=weekly.map(w=>w.label);
+  const WW=weekly.map(w=>w.win);
+  const WLo=weekly.map(w=>w.loss);
+  const WB=weekly.map(w=>w.be);
+  const WIP=weekly.map(w=>w.inProgress);
+  destroyChart('cStack');
+  charts['cStack']=new Chart(document.getElementById('cStack'),{type:'bar',data:{labels:WL,datasets:[{label:'Win',data:WW,backgroundColor:'rgba(34,197,94,.8)',borderRadius:3},{label:'Loss',data:WLo,backgroundColor:'rgba(239,68,68,.8)',borderRadius:3},{label:'BE',data:WB,backgroundColor:'rgba(245,158,11,.8)',borderRadius:3},{label:'In Progress',data:WIP,backgroundColor:'rgba(56,189,248,.7)',borderRadius:3}]},options:{...baseOpts,scales:{x:{...baseOpts.scales.x,stacked:true},y:{...baseOpts.scales.y,stacked:true}}}});
+}
+
+function renderKPIs(trades){
+  const wins=trades.filter(t=>t.status==='Profit').length;
+  const losses=trades.filter(t=>t.status==='Loss').length;
+  const bes=trades.filter(t=>t.status==='at cost').length;
+  const wr=(wins+losses>0?(wins/(wins+losses)*100).toFixed(1):0);
+  const pls=trades.filter(t=>t.pl!==null).map(t=>t.pl);
+  const avg=pls.length>0?(pls.reduce((a,b)=>a+b,0)/pls.length).toFixed(2):0;
+  const best=pls.length>0?Math.max(...pls).toFixed(1):0;
+  const worst=pls.length>0?Math.min(...pls).toFixed(1):0;
+  const kpis=[
+    {val:trades.length,lbl:'Total Trades',sub:trades[0]?.entry?.slice(0,7)+' → now',cls:'kpi-p',color:P},
+    {val:wr+'%',lbl:'Win Rate',sub:`${wins}W / ${losses}L / ${bes}BE`,cls:'kpi-g',color:wr>=50?G:wr>=30?Y:R},
+    {val:wins,lbl:'Wins',cls:'kpi-g',color:G},
+    {val:losses,lbl:'Losses',cls:'kpi-r',color:R},
+    {val:bes,lbl:'Breakeven',cls:'kpi-y',color:Y},
+    {val:(avg>0?'+':'')+avg+'%',lbl:'Avg P/L %',sub:'per closed trade',cls:'kpi-b',color:B},
+    {val:(best>0?'+':'')+best+'%',lbl:'Best Trade',cls:'kpi-g',color:G},
+    {val:worst+'%',lbl:'Worst Trade',cls:'kpi-r',color:R},
+  ];
+  document.getElementById('kpiGrid').innerHTML=kpis.map(k=>`<div class="kpi-card ${k.cls}"><div class="val" style="color:${k.color};font-size:${String(k.val).length>6?'1.4rem':'1.9rem'}">${k.val}</div><div class="lbl">${k.lbl}</div>${k.sub?`<div class="sub">${k.sub}</div>`:''}</div>`).join('');
+}
+
+function renderStreak(streak){
+  const cur=streak.current;
+  const curText=cur.type!=='none'?`${cur.count} ${cur.type.toUpperCase()} streak`:'—';
+  const curColor=cur.type==='win'?G:cur.type==='loss'?R:fc;
+  document.getElementById('streakBar').innerHTML=`<div class="streak-item"><div class="streak-icon">🔥</div><div class="streak-info"><div class="sv" style="color:${G}">${streak.maxW}</div><div class="sl">Max Win Streak</div></div></div><div class="streak-item"><div class="streak-icon">❄️</div><div class="streak-info"><div class="sv" style="color:${R}">${streak.maxL}</div><div class="sl">Max Loss Streak</div></div></div><div class="streak-item"><div class="streak-icon">${cur.type==='win'?'🔥':cur.type==='loss'?'❄️':'➖'}</div><div class="streak-info"><div class="sv" style="color:${curColor}">${curText}</div><div class="sl">Current Streak</div></div></div>`;
+}
+
+function renderTable(){
+  const weekly=getSlice('table');
+  const showZero=document.getElementById('showZeroToggle')?.checked;
+  const rows=weekly.slice().reverse().filter(w=>showZero||w.total>0);
+  document.getElementById('weekTable').innerHTML=rows.map(w=>{
+    if(w.total===0) return `<tr style="opacity:.45"><td>${w.label}</td><td><span class="badge" style="background:rgba(148,163,184,.15);color:var(--muted)">0</span></td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">No trades</td></tr>`;
+    const wrDisplay = w.wr !== null ? w.wr+'%' : '<span style="color:var(--muted)">—</span>';
+    const wrc = w.wr !== null ? (w.wr>=50?G:R) : fc;
+    const ipStyle = w.inProgress>0 ? `color:${B};font-weight:700` : `color:var(--muted)`;
+    return `<tr><td>${w.label}</td><td><span class="badge">${w.total}</span></td><td style="color:${G}">${w.win}</td><td style="color:${R}">${w.loss}</td><td style="color:${Y}">${w.be}</td><td style="${ipStyle}">${w.inProgress>0?'🔄 '+w.inProgress:'—'}</td><td style="color:${wrc};font-weight:700">${wrDisplay}</td></tr>`;
+  }).join('');
+}
+
+function switchTab(tab,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+tab).classList.add('active');
+  btn.classList.add('active');
+  setTimeout(()=>Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}}),50);
+}
+
+function init(){
+  tradesData = %%TRADES_JSON%%;
+  allWeekly = computeWeekly(tradesData);
+  const streak = computeStreak(tradesData);
+  const plCurve = computePLCurve(tradesData);
+  renderKPIs(tradesData);
+  renderStreak(streak);
+  renderTable();
+  renderCharts(tradesData, plCurve);
+  const now = new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  document.getElementById('metaInfo').innerHTML = `<span style="color:var(--muted)">Last updated &nbsp;</span><span style="color:var(--text)">${now}</span>`;
+  document.getElementById('dateRange').textContent = tradesData[0]?.entry + ' → ' + tradesData[tradesData.length-1]?.entry;
+  document.getElementById('footerText').textContent = `Trading Dashboard · ${tradesData.length} trades · Updated ${now}`;
+}
+
+init();
+</script>
+</body>
+</html>
+"""
+
+def fetch_all_notion_trades():
+    """Fetch all trades from Notion database"""
+    all_results = []
+    cursor = None
+    while True:
+        payload = {"page_size": 100}
+        if cursor:
+            payload["start_cursor"] = cursor
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/databases/{DATABASE_ID}/query",
+            data=json.dumps(payload).encode(),
+            headers={
+                "Authorization": f"Bearer {NOTION_TOKEN}",
+                "Notion-Version": "2022-06-28",
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.load(resp)
+        for r in data["results"]:
+            p = r["properties"]
+            status_sel = p.get("Status", {}).get("select")
+            status = status_sel["name"] if status_sel else None
+            if not status:
+                continue
+            entry = (p.get("Entry") or {}).get("date", {})
+            entry_date = entry.get("start") if entry else None
+            if not entry_date:
+                continue
+            exit_ = (p.get("EXIT") or {}).get("date", {})
+            exit_date = exit_.get("start") if exit_ else entry_date
+            pl = (p.get("P/L %") or {}).get("number")
+            name_list = (p.get("Name") or {}).get("title", [])
+            name = name_list[0]["plain_text"] if name_list else "N/A"
+            checkbox_sel = (p.get("Checkbox") or {}).get("select")
+            sector_sel = (p.get("Sector") or {}).get("select")
+            all_results.append({
+                "name": name,
+                "status": status,
+                "entry": entry_date,
+                "exit": exit_date,
+                "pl": pl,
+                "type": checkbox_sel["name"] if checkbox_sel else None,
+                "sector": sector_sel["name"] if sector_sel else None,
+            })
+        if not data.get("has_more"):
+            break
+        cursor = data["next_cursor"]
+        time.sleep(0.2)
+    all_results.sort(key=lambda x: x["entry"])
+    return all_results
+
+def generate_html():
+    """Generate the static HTML dashboard"""
+    print("📊 Generating Trading Dashboard...")
+    try:
+        trades = fetch_all_notion_trades()
+        trades_json = json.dumps(trades)
+        html_content = HTML_TEMPLATE.replace("%%TRADES_JSON%%", trades_json)
+        
+        with open("index.html", "w", encoding="utf-8") as f:
+            f.write(html_content)
+        
+        print(f"✅ Dashboard generated: index.html")
+        print(f"   Trades loaded: {len(trades)}")
+        return True
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    generate_html()
