@@ -1,18 +1,18 @@
 name: Update Trading Dashboard
 
 on:
-  # Run daily at 12:00 PM UTC (adjust to your timezone)
   schedule:
     - cron: '0 12 * * *'
-  
-  # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
 
 jobs:
   update-dashboard:
     runs-on: ubuntu-latest
     
-    # Pass secrets as environment variables to the job
+    # Grant workflow permissions to push code
+    permissions:
+      contents: write
+    
     env:
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
       DATABASE_ID: ${{ secrets.DATABASE_ID }}
@@ -35,4 +35,6 @@ jobs:
           git config --local user.name "GitHub Action"
           git add index.html
           git commit -m "🔄 Update dashboard: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
-          git push
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
