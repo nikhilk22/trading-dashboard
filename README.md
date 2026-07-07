@@ -52,7 +52,7 @@ git push -u origin main
 
 ### 5. Your Dashboard is Live! 🎉
 
-Access at: `https://YOUR-USERNAME.github.io/trading-dashboard`
+Access at: `https://nikhilk22.github.io/trading-dashboard`
 
 ---
 
@@ -64,7 +64,7 @@ Edit `.github/workflows/update-dashboard.yml`, line 7:
 
 ```yaml
 schedule:
-  - cron: '0 12 * * *'  # Daily at 12 PM UTC
+  - cron: '30 0 * * *'  # Daily at 12 PM UTC
 ```
 
 **Cron Examples:**
