@@ -319,7 +319,7 @@ function renderTradesChart(weekly){
   const WL=weekly.map(w=>w.label);
   const WT=weekly.map(w=>w.total);
   destroyChart('cTrades');
-  charts['cTrades']=new Chart(document.getElementById('cTrades'),{type:'bar',data:{labels:WL,datasets:[{label:'Trades',data:WT,backgroundColor:WL.map((_,i)=>`rgba(99,102,241,${.45+.45*(i/Math.max(1,WL.length-1))})`)}]},options:{...baseOpts,indexAxis:'y'===undefined?'x':'y'}});
+  charts['cTrades']=new Chart(document.getElementById('cTrades'),{type:'bar',data:{labels:WL,datasets:[{label:'Trades',data:WT,backgroundColor:WL.map((_,i)=>`rgba(99,102,241,${.45+.45*(i/Math.max(1,WL.length-1))})`)}]},options:baseOpts});
 }
 
 function renderWRChart(weekly){
