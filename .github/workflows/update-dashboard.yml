@@ -2,7 +2,7 @@ name: Update Trading Dashboard
 
 on:
   schedule:
-    - cron: '30 0 * * *'
+    - cron: '24 03 * * *'
   workflow_dispatch:
 
 jobs:
