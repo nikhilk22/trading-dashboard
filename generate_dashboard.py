@@ -118,7 +118,32 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
     <div class="kpi-grid" id="kpiGrid"></div>
     <div class="streak-bar" id="streakBar"></div>
     <div class="charts-row r2">
-      <div class="chart-card"><h3>🍩 Overall Outcome Split</h3><div style="height:280px;display:flex;align-items:center;justify-content:center"><canvas id="cPie"></canvas></div></div>
+      <div class="chart-card">
+  <div class="chart-header">
+    <h3>🍩 Overall Outcome Split</h3>
+    <div style="display:flex;gap:8px;">
+      <select id="filterYear" onchange="updateOverview()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;cursor:pointer;outline:none;">
+        <option value="All">All Years</option>
+      </select>
+      <select id="filterMonth" onchange="updateOverview()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;cursor:pointer;outline:none;">
+        <option value="All">All Months</option>
+        <option value="01">Jan</option>
+        <option value="02">Feb</option>
+        <option value="03">Mar</option>
+        <option value="04">Apr</option>
+        <option value="05">May</option>
+        <option value="06">Jun</option>
+        <option value="07">Jul</option>
+        <option value="08">Aug</option>
+        <option value="09">Sep</option>
+        <option value="10">Oct</option>
+        <option value="11">Nov</option>
+        <option value="12">Dec</option>
+      </select>
+    </div>
+  </div>
+  <div style="height:280px;display:flex;align-items:center;justify-content:center"><canvas id="cPie"></canvas></div>
+</div>
       <div class="chart-card"><h3>📈 Cumulative P/L % Curve</h3><canvas id="cPL"></canvas></div>
     </div>
   </div>
@@ -389,15 +414,42 @@ function switchTab(tab,btn){
   setTimeout(()=>Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}}),50);
 }
 
+function updateOverview() {
+  const selectedYear = document.getElementById('filterYear').value;
+  const selectedMonth = document.getElementById('filterMonth').value;
+
+  const filteredTrades = tradesData.filter(t => {
+    if (!t.entry) return false;
+    const parts = t.entry.split('-'); // Parses 'YYYY-MM-DD'
+    const matchYear = selectedYear === 'All' || parts[0] === selectedYear;
+    const matchMonth = selectedMonth === 'All' || parts[1] === selectedMonth;
+    return matchYear && matchMonth;
+  });
+
+  const streak = computeStreak(filteredTrades);
+  const plCurve = computePLCurve(filteredTrades);
+  renderKPIs(filteredTrades);
+  renderStreak(streak);
+  renderCharts(filteredTrades, plCurve);
+}
+
 function init(){
   tradesData = %%TRADES_JSON%%;
   allWeekly = computeWeekly(tradesData);
-  const streak = computeStreak(tradesData);
-  const plCurve = computePLCurve(tradesData);
-  renderKPIs(tradesData);
-  renderStreak(streak);
+  
+  // Dynamically populate years present in data
+  const yearSelect = document.getElementById('filterYear');
+  const years = [...new Set(tradesData.map(t => t.entry ? t.entry.split('-')[0] : null))].filter(Boolean).sort();
+  years.forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    yearSelect.appendChild(opt);
+  });
+
   renderTable();
-  renderCharts(tradesData, plCurve);
+  updateOverview(); // Triggers the unified dashboard render
+  
   const now = new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
   document.getElementById('metaInfo').innerHTML = `<span style="color:var(--muted)">Last updated &nbsp;</span><span style="color:var(--text)">${now}</span>`;
   document.getElementById('dateRange').textContent = tradesData[0]?.entry + ' → ' + tradesData[tradesData.length-1]?.entry;
