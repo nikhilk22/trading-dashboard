@@ -52,7 +52,7 @@ git push -u origin main
 
 ### 5. Your Dashboard is Live! 🎉
 
-Access at: `https://nikhilk22.github.io/trading-dashboard`
+Access at: https://nikhilk22.github.io/trading-dashboard
 
 ---
 
